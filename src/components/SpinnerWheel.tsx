@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import TaskModal from './TaskModal';
 
 interface SpinnerWheelProps {
   tasks: string[];
@@ -76,6 +77,9 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
     };
   }, [hasUserTasks, isSpinning]);
 
+  // State to track the selected segment index
+  const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | null>(null);
+
   // Draw the wheel
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -104,11 +108,11 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
       ctx.arc(centerX, centerY, radius, startAngle, endAngle);
       ctx.closePath();
       
-      // Fill segment
+      // Fill segment with color
       ctx.fillStyle = colors[i % colors.length];
       ctx.fill();
       
-      // Add border
+      // Add subtle border (same for all segments)
       ctx.lineWidth = 2;
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
       ctx.stroke();
@@ -119,18 +123,25 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
       ctx.rotate(startAngle + anglePerSegment / 2);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#fff';
-      ctx.font = '14px var(--font-sans)';
+      ctx.font = 'bold 20px var(--font-sans)'; // Much larger, bold font
+      
+      // Add text shadow for better readability
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowBlur = 5;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 1;
       
       // Adjust text positioning and wrapping for better readability
-      const maxTextLength = radius * 0.7;
+      const maxTextLength = radius * 0.6; // Shorter to accommodate larger font
       let text = displayTasks[i];
       
       // Truncate text if too long
       if (ctx.measureText(text).width > maxTextLength) {
-        text = text.substring(0, 15) + '...';
+        text = text.substring(0, 10) + '...'; // Shorter truncation for larger font
       }
       
-      ctx.fillText(text, radius * 0.75, 5);
+      // Position text slightly further from center for better visibility
+      ctx.fillText(text, radius * 0.65, 6);
       ctx.restore();
     }
     
@@ -155,20 +166,31 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
   const spinWheel = () => {
     if (isSpinning || !hasUserTasks) return;
     
-    setIsSpinning(true);
-    setSelectedTask(null);
+    // First, choose a random segment to land on
+    const randomSegmentIndex = Math.floor(Math.random() * tasks.length);
     
-    // Calculate a random stopping point
+    // Clear any previously selected task
+    setSelectedTask(null);
+    setSelectedSegmentIndex(null);
+    setIsSpinning(true);
+    
+    // Animation parameters
     const spinDuration = 3000 + Math.random() * 2000; // Between 3-5 seconds
     const spinRevolutions = 2 + Math.random() * 3; // Between 2-5 full rotations
-    const targetRotation = rotation + (Math.PI * 2 * spinRevolutions);
     
-    // Random segment to land on
-    const randomIndex = Math.floor(Math.random() * tasks.length);
-    const segmentAngle = (Math.PI * 2) / tasks.length;
-    const segmentOffset = segmentAngle * randomIndex + segmentAngle / 2;
-    const finalRotation = targetRotation + segmentOffset;
+    // Calculate the segment angle
+    const segmentAngle = (2 * Math.PI) / tasks.length;
     
+    // Calculate the exact rotation needed to land on the selected segment
+    // We want the pointer (at top, 0 radians) to point to the middle of the segment
+    const segmentMiddleAngle = randomSegmentIndex * segmentAngle + segmentAngle / 2;
+    
+    // Calculate the final rotation
+    // We need to rotate clockwise, so we subtract the segment angle from 2π
+    // Then add the base rotation (full revolutions)
+    const finalRotation = rotation + (2 * Math.PI * spinRevolutions) + (2 * Math.PI - segmentMiddleAngle);
+    
+    // Animation
     let startTime: number | null = null;
     
     const animateSpin = (timestamp: number) => {
@@ -185,17 +207,15 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
       if (progress < 1) {
         animationRef.current = requestAnimationFrame(animateSpin);
       } else {
-        // Spin complete
+        // Spin complete - set the selected segment and task
         setIsSpinning(false);
+        setSelectedSegmentIndex(randomSegmentIndex);
         
-        // Calculate which segment is selected
-        const normalizedRotation = currentRotation % (2 * Math.PI);
-        const selectedIndex = Math.floor(tasks.length - (normalizedRotation / (2 * Math.PI) * tasks.length)) % tasks.length;
-        const selected = tasks[selectedIndex];
+        const selectedTaskValue = tasks[randomSegmentIndex];
+        setSelectedTask(selectedTaskValue);
         
-        setSelectedTask(selected);
         if (onSpinComplete) {
-          onSpinComplete(selected);
+          onSpinComplete(selectedTaskValue);
         }
       }
     };
@@ -207,6 +227,27 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
     animationRef.current = requestAnimationFrame(animateSpin);
   };
   
+  // State for modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Handle modal close
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+  };
+
+  // Handle respin from modal
+  const handleRespin = () => {
+    setIsModalOpen(false);
+    spinWheel();
+  };
+
+  // Show modal when task is selected
+  useEffect(() => {
+    if (selectedTask && !isSpinning && hasUserTasks) {
+      setIsModalOpen(true);
+    }
+  }, [selectedTask, isSpinning, hasUserTasks]);
+
   return (
     <div className="flex flex-col items-center">
       <div className="relative mb-6">
@@ -234,11 +275,14 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
         </button>
       )}
       
-      {selectedTask && !isSpinning && hasUserTasks && (
-        <div className="mt-6 p-4 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 text-center">
-          <h3 className="text-xl font-medium text-white">Focus on:</h3>
-          <p className="text-2xl font-bold text-white mt-2">{selectedTask}</p>
-        </div>
+      {/* Task Modal */}
+      {selectedTask && (
+        <TaskModal
+          task={selectedTask}
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          onRespin={handleRespin}
+        />
       )}
     </div>
   );
