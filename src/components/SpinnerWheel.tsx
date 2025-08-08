@@ -7,7 +7,7 @@ interface SpinnerWheelProps {
   onSpinComplete?: (task: string) => void;
 }
 
-const defaultTasks = ['Task 1', 'Task 2', 'Task 3', 'Task 4', 'Task 5', 'Task 6', 'Task 7', 'Task 8'];
+const defaultTasks = [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '];
 
 const colors = [
   '#FF6B6B', // coral red
@@ -23,17 +23,19 @@ const colors = [
 export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWheelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rotation, setRotation] = useState(0);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const animationRef = useRef<number | null>(null);
   
   const displayTasks = tasks.length > 0 ? tasks : defaultTasks;
   const taskCount = displayTasks.length;
   const hasUserTasks = tasks.length > 0;
 
-  // Continuous animation for the wheel
+  // Continuous animation for the wheel when no tasks
   useEffect(() => {
-    // Only animate if no user tasks
-    if (hasUserTasks) {
-      if (animationRef.current !== null) {
+    // Only animate if no user tasks and not currently spinning
+    if (hasUserTasks || isSpinning) {
+      if (animationRef.current !== null && !isSpinning) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
       }
@@ -72,7 +74,7 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [hasUserTasks]);
+  }, [hasUserTasks, isSpinning]);
 
   // Draw the wheel
   useEffect(() => {
@@ -118,7 +120,17 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
       ctx.textAlign = 'right';
       ctx.fillStyle = '#fff';
       ctx.font = '14px var(--font-sans)';
-      ctx.fillText(displayTasks[i], radius * 0.85, 5);
+      
+      // Adjust text positioning and wrapping for better readability
+      const maxTextLength = radius * 0.7;
+      let text = displayTasks[i];
+      
+      // Truncate text if too long
+      if (ctx.measureText(text).width > maxTextLength) {
+        text = text.substring(0, 15) + '...';
+      }
+      
+      ctx.fillText(text, radius * 0.75, 5);
       ctx.restore();
     }
     
@@ -139,15 +151,60 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
     
   }, [rotation, taskCount, displayTasks]);
   
-  // Handle spin - just selects a random task without animation
+  // Handle spin with animation
   const spinWheel = () => {
-    // Select a random task
-    const randomIndex = Math.floor(Math.random() * tasks.length);
-    const selected = tasks[randomIndex];
+    if (isSpinning || !hasUserTasks) return;
     
-    if (onSpinComplete) {
-      onSpinComplete(selected);
+    setIsSpinning(true);
+    setSelectedTask(null);
+    
+    // Calculate a random stopping point
+    const spinDuration = 3000 + Math.random() * 2000; // Between 3-5 seconds
+    const spinRevolutions = 2 + Math.random() * 3; // Between 2-5 full rotations
+    const targetRotation = rotation + (Math.PI * 2 * spinRevolutions);
+    
+    // Random segment to land on
+    const randomIndex = Math.floor(Math.random() * tasks.length);
+    const segmentAngle = (Math.PI * 2) / tasks.length;
+    const segmentOffset = segmentAngle * randomIndex + segmentAngle / 2;
+    const finalRotation = targetRotation + segmentOffset;
+    
+    let startTime: number | null = null;
+    
+    const animateSpin = (timestamp: number) => {
+      if (!startTime) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      const progress = Math.min(elapsed / spinDuration, 1);
+      
+      // Easing function for smooth deceleration
+      const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+      const currentRotation = rotation + (finalRotation - rotation) * easeOut(progress);
+      
+      setRotation(currentRotation);
+      
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animateSpin);
+      } else {
+        // Spin complete
+        setIsSpinning(false);
+        
+        // Calculate which segment is selected
+        const normalizedRotation = currentRotation % (2 * Math.PI);
+        const selectedIndex = Math.floor(tasks.length - (normalizedRotation / (2 * Math.PI) * tasks.length)) % tasks.length;
+        const selected = tasks[selectedIndex];
+        
+        setSelectedTask(selected);
+        if (onSpinComplete) {
+          onSpinComplete(selected);
+        }
+      }
+    };
+    
+    if (animationRef.current !== null) {
+      cancelAnimationFrame(animationRef.current);
     }
+    
+    animationRef.current = requestAnimationFrame(animateSpin);
   };
   
   return (
@@ -158,15 +215,30 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
           width={300} 
           height={300} 
         />
+        {isSpinning && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-white text-xl font-bold bg-black/30 px-4 py-2 rounded-full">
+              Spinning...
+            </div>
+          </div>
+        )}
       </div>
       
       {hasUserTasks && (
         <button 
           onClick={spinWheel}
-          className="btn btn-primary"
+          disabled={isSpinning}
+          className="btn btn-primary px-8 py-3 text-lg"
         >
-          Spin the Wheel
+          {isSpinning ? 'Spinning...' : 'Spin the Wheel'}
         </button>
+      )}
+      
+      {selectedTask && !isSpinning && hasUserTasks && (
+        <div className="mt-6 p-4 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 text-center">
+          <h3 className="text-xl font-medium text-white">Focus on:</h3>
+          <p className="text-2xl font-bold text-white mt-2">{selectedTask}</p>
+        </div>
       )}
     </div>
   );
