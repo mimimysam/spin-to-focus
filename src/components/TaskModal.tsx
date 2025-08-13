@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { Task } from '@/types/Task';
 
 interface TaskModalProps {
-  task: string;
+  task: Task;
   isOpen: boolean;
   onClose: () => void;
   onRespin: () => void;
+  onTimeUpdate?: (taskId: string, seconds: number) => void;
 }
 
 type TimerType = 'pomodoro' | 'shortBreak' | 'longBreak';
@@ -17,12 +19,14 @@ const TIMER_DURATIONS = {
   longBreak: 15 * 60, // 15 minutes in seconds
 };
 
-export default function TaskModal({ task, isOpen, onClose, onRespin }: TaskModalProps) {
+export default function TaskModal({ task, isOpen, onClose, onRespin, onTimeUpdate }: TaskModalProps) {
   const [timerType, setTimerType] = useState<TimerType>('pomodoro');
   const [timeRemaining, setTimeRemaining] = useState(TIMER_DURATIONS.pomodoro);
   const [isRunning, setIsRunning] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const taskTimeTrackingRef = useRef<NodeJS.Timeout | null>(null);
+  const taskTimeElapsedRef = useRef<number>(0);
 
   // Reset timer when timer type changes
   useEffect(() => {
@@ -71,9 +75,11 @@ export default function TaskModal({ task, isOpen, onClose, onRespin }: TaskModal
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Handle start/pause button
+  // Handle start/pause button for both Pomodoro timer and task time tracking
   const toggleTimer = () => {
     setIsRunning((prev) => !prev);
+    // Note: The task time tracking will automatically start/stop based on isRunning state
+    // via the useEffect that depends on isRunning
   };
 
   // Handle timer type change
@@ -82,6 +88,35 @@ export default function TaskModal({ task, isOpen, onClose, onRespin }: TaskModal
   };
 
   // No fullscreen toggle
+
+  // Start/stop task time tracking when modal opens/closes or timer is paused
+  useEffect(() => {
+    // Only track time when modal is open AND timer is running
+    if (isOpen && task && isRunning) {
+      // Start time tracking
+      taskTimeTrackingRef.current = setInterval(() => {
+        taskTimeElapsedRef.current += 1;
+        
+        // Update the task's time every second
+        if (onTimeUpdate) {
+          onTimeUpdate(task.id, 1); // Add 1 second
+        }
+      }, 1000);
+    } else {
+      // Stop time tracking when modal closes or timer is paused
+      if (taskTimeTrackingRef.current) {
+        clearInterval(taskTimeTrackingRef.current);
+        taskTimeTrackingRef.current = null;
+      }
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (taskTimeTrackingRef.current) {
+        clearInterval(taskTimeTrackingRef.current);
+      }
+    };
+  }, [isOpen, task, onTimeUpdate, isRunning]);
 
   // Close modal on escape key
   useEffect(() => {
@@ -144,7 +179,7 @@ export default function TaskModal({ task, isOpen, onClose, onRespin }: TaskModal
         {/* Modal content */}
         <div className="flex flex-col items-center">
           <h2 className="text-xl font-semibold text-white mb-2">Selected Task:</h2>
-          <p className="text-2xl font-bold text-white mb-8 text-center">{task}</p>
+          <p className="text-2xl font-bold text-white mb-8 text-center">{task.text}</p>
           
           {/* Timer type toggle */}
           <div className="flex space-x-2 mb-8">

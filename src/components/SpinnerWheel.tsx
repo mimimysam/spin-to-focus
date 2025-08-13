@@ -3,32 +3,38 @@
 import { useState, useEffect, useRef } from 'react';
 import TaskModal from './TaskModal';
 
+import { Task } from '@/types/Task';
+
 interface SpinnerWheelProps {
-  tasks: string[];
-  onSpinComplete?: (task: string) => void;
+  tasks: Task[];
+  onSpinComplete?: (task: Task) => void;
+  onTaskTimeUpdate?: (taskId: string, seconds: number) => void;
 }
 
 const defaultTasks = [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '];
 
 const colors = [
-  '#FF6B6B', // coral red
-  '#FF9E7A', // peach
-  '#FFCA80', // light orange
-  '#FFE066', // yellow
-  '#9EE09E', // light green
-  '#67D5B5', // teal
-  '#84D2F6', // light blue
-  '#C792EA', // purple
+  '#D32F2F', // darker red
+  '#E64A19', // darker orange-red
+  '#F57C00', // darker orange
+  '#FFA000', // darker amber
+  '#689F38', // darker light green
+  '#00796B', // darker teal
+  '#0288D1', // darker light blue
+  '#7B1FA2', // darker purple
 ];
 
-export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWheelProps) {
+export default function SpinnerWheel({ tasks = [], onSpinComplete, onTaskTimeUpdate }: SpinnerWheelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rotation, setRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const animationRef = useRef<number | null>(null);
   
-  const displayTasks = tasks.length > 0 ? tasks : defaultTasks;
+  // Create display tasks - either user tasks or default placeholders
+  const displayTasks = tasks.length > 0 
+    ? tasks.map(task => task.text) 
+    : defaultTasks;
   const taskCount = displayTasks.length;
   const hasUserTasks = tasks.length > 0;
 
@@ -123,25 +129,31 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
       ctx.rotate(startAngle + anglePerSegment / 2);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 20px var(--font-sans)'; // Much larger, bold font
+      ctx.font = hasUserTasks 
+        ? 'bold 80px var(--font-sans)' // Extremely large for user tasks
+        : 'bold 28px var(--font-sans)'; // Larger for default tasks
       
       // Add text shadow for better readability
       ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-      ctx.shadowBlur = 5;
-      ctx.shadowOffsetX = 1;
-      ctx.shadowOffsetY = 1;
+      ctx.shadowBlur = hasUserTasks ? 8 : 5;
+      ctx.shadowOffsetX = hasUserTasks ? 2 : 1;
+      ctx.shadowOffsetY = hasUserTasks ? 2 : 1;
       
       // Adjust text positioning and wrapping for better readability
-      const maxTextLength = radius * 0.6; // Shorter to accommodate larger font
+      const maxTextLength = hasUserTasks ? radius * 0.7 : radius * 0.6;
       let text = displayTasks[i];
       
       // Truncate text if too long
       if (ctx.measureText(text).width > maxTextLength) {
-        text = text.substring(0, 10) + '...'; // Shorter truncation for larger font
+        // Adjust truncation length based on font size
+        const truncateLength = hasUserTasks ? 10 : 10;
+        text = text.substring(0, truncateLength) + '...';
       }
       
-      // Position text slightly further from center for better visibility
-      ctx.fillText(text, radius * 0.65, 6);
+      // Position text - adjust for larger font when tasks are added
+      const textDistance = hasUserTasks ? radius * 0.8 : radius * 0.65;
+      const verticalOffset = hasUserTasks ? 25 : 8;
+      ctx.fillText(text, textDistance, verticalOffset);
       ctx.restore();
     }
     
@@ -160,7 +172,7 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
     ctx.fillStyle = '#fff';
     ctx.fill();
     
-  }, [rotation, taskCount, displayTasks]);
+  }, [rotation, taskCount, displayTasks, hasUserTasks]);
   
   // Handle spin with animation
   const spinWheel = () => {
@@ -253,8 +265,9 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
       <div className="relative mb-6">
         <canvas 
           ref={canvasRef} 
-          width={300} 
-          height={300} 
+          width={hasUserTasks ? 600 : 300} 
+          height={hasUserTasks ? 600 : 300}
+          className={`${hasUserTasks ? 'w-[600px] h-[600px]' : 'w-[300px] h-[300px]'} transition-all duration-500`}
         />
         {isSpinning && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -282,6 +295,7 @@ export default function SpinnerWheel({ tasks = [], onSpinComplete }: SpinnerWhee
           isOpen={isModalOpen}
           onClose={handleCloseModal}
           onRespin={handleRespin}
+          onTimeUpdate={onTaskTimeUpdate}
         />
       )}
     </div>
